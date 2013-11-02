@@ -19,15 +19,14 @@ int main(int argc, const char *argv[])
 		l += read(fd, code+l, sz-l);
 	for(l=0;l<sz/sizeof(uint32_t);l++)
 		code[l]=__bswap_32(code[l]);
-	void* orig_code = code;
 	uint32_t reg[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 	uint32_t pc=0;
 	while(1)
 	{
 		uint32_t opc=code[pc];
-		char op = opc>>28, a = (opc>>6)&7, b = (opc>>3)&7, c = opc&7;
+		int a = (opc>>6)&7, b = (opc>>3)&7, c = opc&7;
 		pc++;
-		switch(op)
+		switch(opc>>28)
 		{
 			case 0:
 				if(reg[c])
