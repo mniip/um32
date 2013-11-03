@@ -86,19 +86,6 @@ readloop:
 
 	// let the thing begin
 mainloop:
-/*
-	pushl 28(%ebp)
-	pushl 24(%ebp)
-	pushl 20(%ebp)
-	pushl 16(%ebp)
-	pushl 12(%ebp)
-	pushl 8(%ebp)
-	pushl 4(%ebp)
-	pushl (%ebp)
-	push $str2
-	call printf
-	addl $36, %esp
-*/
 	movl (%esi, %edi, 4), %edx
 	inc %edi
 	cmp $0xd0000000, %edx
