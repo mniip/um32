@@ -70,9 +70,7 @@ int main(int argc, const char *argv[])
 				break;
 			case 11:
 			{
-				char i;
-				read(0, &i, 1);
-				reg[c] = i;
+				reg[c] = getchar();
 				break;
 			}
 			case 12:
