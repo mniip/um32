@@ -66,7 +66,7 @@ int main(int argc, const char *argv[])
 				free((uint32_t *)(uintptr_t)reg[c]);
 				break;
 			case 10:
-				putchar(reg[c]);
+				write(1, reg+c, 1);
 				break;
 			case 11:
 			{

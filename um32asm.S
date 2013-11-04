@@ -233,9 +233,12 @@ o9:
 
 o10:
 	// 10: output
-	pushl (%ebp, %ecx, 4)
-	call putchar
-	addl $4, %esp
+	lea (%ebp, %ecx, 4), %ecx
+	pushl $1
+	pushl %ecx
+	pushl $1
+	call write
+	addl $12, %esp
 	jmp mainloop
 
 o11:
