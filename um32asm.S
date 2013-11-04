@@ -89,14 +89,14 @@ mainloop:
 	movl (%esi, %edi, 4), %edx
 	inc %edi
 	cmp $0xd0000000, %edx
-	jnae not_13
+	jnae not_o13
 	movl %edx, %eax
 	shr $25, %eax
 	and $7, %eax // A register
 	and $0x1ffffff, %edx // value
 	movl %edx, (%ebp, %eax, 4)
 	jmp mainloop
-not_13:
+not_o13:
 	movl %edx, %eax
 	shr $6, %eax
 	andl $7, %eax // A register
@@ -104,74 +104,91 @@ not_13:
 	shr $3, %ebx
 	andl $7, %ebx // B register
 	movl %edx, %ecx
-	shr $28, %ecx // opcode
-	andl $7, %edx // C register
-	cmp $0, %ecx
-	jne not_0
+	andl $7, %ecx // C register
+	shr $28, %edx // opcode
+	cmp $0, %edx
+	je o0
+	cmp $1, %edx
+	je o1
+	cmp $2, %edx
+	je o2
+	cmp $3, %edx
+	je o3
+	cmp $4, %edx
+	je o4
+	cmp $5, %edx
+	je o5
+	cmp $6, %edx
+	je o6
+	cmp $7, %edx
+	je o7
+	cmp $8, %edx
+	je o8
+	cmp $9, %edx
+	je o9
+	cmp $10, %edx
+	je o10
+	cmp $11, %edx
+	je o11
+	jmp o12
+o0:
 	// 0: conditional move
-	cmp $0, (%ebp, %edx, 4)
+	cmp $0, (%ebp, %ecx, 4)
 	je mainloop
-	movl (%ebp, %ebx, 4), %ecx
-	movl %ecx, (%ebp, %eax, 4)
+	movl (%ebp, %ebx, 4), %edx
+	movl %edx, (%ebp, %eax, 4)
 	jmp mainloop
 
-not_0:
-	loop not_1
-asd:
+o1:
 	// 1: array peek
 	movl (%ebp, %ebx, 4), %ebx
 	cmp $0, %ebx
 	je peekcode
-	movl (%ebp, %edx, 4), %edx
-	incl %edx
-	movl (%ebx, %edx, 4), %ebx
+	movl (%ebp, %ecx, 4), %ecx
+	incl %ecx
+	movl (%ebx, %ecx, 4), %ebx
 	movl %ebx, (%ebp, %eax, 4)
 	jmp mainloop
 peekcode:
-	movl (%ebp, %edx, 4), %edx
-	movl (%esi, %edx, 4), %edx
-	movl %edx, (%ebp, %eax, 4)
+	movl (%ebp, %ecx, 4), %ecx
+	movl (%esi, %ecx, 4), %ecx
+	movl %ecx, (%ebp, %eax, 4)
 	jmp mainloop
 
-not_1:
-	loop not_2
+o2:
 	// 2: array poke
 	movl (%ebp, %eax, 4), %eax
 	cmp $0, %eax
 	je pokecode
 	movl (%ebp, %ebx, 4), %ebx
 	incl %ebx
-	movl (%ebp, %edx, 4), %edx
-	movl %edx, (%eax, %ebx, 4)
+	movl (%ebp, %ecx, 4), %ecx
+	movl %ecx, (%eax, %ebx, 4)
 	jmp mainloop
 pokecode:
 	movl (%ebp, %ebx, 4), %ebx
-	movl (%ebp, %edx, 4), %edx
-	movl %edx, (%esi, %ebx, 4)
+	movl (%ebp, %ecx, 4), %ecx
+	movl %ecx, (%esi, %ebx, 4)
 	jmp mainloop
 
-not_2:
-	loop not_3
+o3:
 	// 3: add
-	movl (%ebp, %ebx, 4), %ecx
-	addl (%ebp, %edx, 4), %ecx
-	movl %ecx, (%ebp, %eax, 4)
+	movl (%ebp, %ebx, 4), %edx
+	addl (%ebp, %ecx, 4), %edx
+	movl %edx, (%ebp, %eax, 4)
 	jmp mainloop
 
-not_3:
-	loop not_4
+o4:
 	// 4: multiply
 	pushl %eax
 	movl (%ebp, %ebx, 4), %eax
-	mull (%ebp, %edx, 4)
+	mull (%ebp, %ecx, 4)
 	popl %ebx
 	movl %eax, (%ebp, %ebx, 4)
 	jmp mainloop
 
-not_4:
-	loop not_5
+o5:
 	// 5: divide
-	movl %edx, %ecx
 	movl $0, %edx
 	pushl %eax
 	movl (%ebp, %ebx, 4), %eax
@@ -180,88 +197,81 @@ not_4:
 	movl %eax, (%ebp, %ebx, 4)
 	jmp mainloop
 
-not_5:
-	loop not_6
+o6:
 	// 6: nand
-	movl (%ebp, %ebx, 4), %ecx
-	andl (%ebp, %edx, 4), %ecx
-	notl %ecx
-	movl %ecx, (%ebp, %eax, 4)
+	movl (%ebp, %ebx, 4), %edx
+	andl (%ebp, %ecx, 4), %edx
+	notl %edx
+	movl %edx, (%ebp, %eax, 4)
 	jmp mainloop
 
-not_6:
-	loop not_7
+o7:
 	// 7: halt
 	jmp bye
 
-not_7:
-	loop not_8
+o8:
 	// 8: allocation
 	pushl %ebx
-	mov (%ebp, %edx, 4), %edx
-	inc %edx
+	mov (%ebp, %ecx, 4), %ecx
+	inc %ecx
 	pushl $4
-	pushl %edx
+	pushl %ecx
 	call calloc
-	popl %edx
-	movl %edx, (%eax)
 	popl %ecx
+	movl %ecx, (%eax)
+	popl %edx
 	popl %ebx
 	movl %eax, (%ebp, %ebx, 4)
 	jmp mainloop
 
-not_8:
-	loop not_9
+o9:
 	// 9: abandonment
-	pushl (%ebp, %edx, 4)
+	pushl (%ebp, %ecx, 4)
 	call free
 	addl $4, %esp
 	jmp mainloop
 
-not_9:
-	loop not_10
+o10:
 	// 10: output
-	pushl (%ebp, %edx, 4)
+	pushl (%ebp, %ecx, 4)
 	call putchar
 	addl $4, %esp
 	jmp mainloop
 
-not_10:
-	loop not_11
+o11:
 	// 11: input
-	pushl %edx
+	pushl %ecx
 	call getchar
-	popl %edx
-	movl %edx, (%ebp, %edx, 4)
+	popl %ecx
+	movl %ecx, (%ebp, %ecx, 4)
 	jmp mainloop
 
-not_11:
+o12:
 	// 12: jump
 	cmp $0, (%ebp, %ebx, 4)
 	je modfinger
-a:
 	movl (%ebp, %ebx, 4), %ebx
-	pushl %edx
-	pushl %ebx
-	movl (%ebx), %ecx
-	decl %ecx
-	shl $2, %ecx
 	pushl %ecx
+	pushl %ebx
+	movl (%ebx), %edx
+	decl %edx
+	shl $2, %edx
+	pushl %edx
 	pushl %esi
 	call realloc
 	movl %eax, %esi
-	popl %ecx
-	popl %ecx
+	popl %edx
+	popl %edx
 	popl %ebx
 	addl $4, %ebx
-	pushl %ecx
+	pushl %edx
 	pushl %ebx
 	pushl %esi
 	call memcpy
 	addl $12, %esp
-	popl %edx
+	popl %ecx
 modfinger:
-	mov (%ebp, %edx, 4), %edi
+	mov (%ebp, %ecx, 4), %edi
 	jmp mainloop
 
 bye:
