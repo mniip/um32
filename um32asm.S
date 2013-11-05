@@ -8,7 +8,7 @@ main:
 	popl %eax
 	popl %eax
 	movl 4(%eax), %eax
-	cmp $0, %eax
+	cmpl $0, %eax
 	je bye
 
 	// open file
@@ -68,7 +68,7 @@ readloop:
 	popl %edx
 	movl %eax, (%edx, %ecx)
 	addl $4, %ecx
-	cmp %edi, %ecx
+	cmpl %edi, %ecx
 	jl readloop
 
 	movl %ebp, %esp
@@ -87,8 +87,8 @@ readloop:
 	// let the thing begin
 mainloop:
 	movl (%esi, %edi, 4), %edx
-	inc %edi
-	cmp $0xd0000000, %edx
+	incl %edi
+	cmpl $0xd0000000, %edx
 	jnae not_o13
 	movl %edx, %eax
 	shr $25, %eax
@@ -106,34 +106,34 @@ not_o13:
 	movl %edx, %ecx
 	andl $7, %ecx // C register
 	shr $28, %edx // opcode
-	cmp $0, %edx
+	cmpl $0, %edx
 	je o0
-	cmp $1, %edx
+	cmpl $1, %edx
 	je o1
-	cmp $2, %edx
+	cmpl $2, %edx
 	je o2
-	cmp $3, %edx
+	cmpl $3, %edx
 	je o3
-	cmp $4, %edx
+	cmpl $4, %edx
 	je o4
-	cmp $5, %edx
+	cmpl $5, %edx
 	je o5
-	cmp $6, %edx
+	cmpl $6, %edx
 	je o6
-	cmp $7, %edx
+	cmpl $7, %edx
 	je o7
-	cmp $8, %edx
+	cmpl $8, %edx
 	je o8
-	cmp $9, %edx
+	cmpl $9, %edx
 	je o9
-	cmp $10, %edx
+	cmpl $10, %edx
 	je o10
-	cmp $11, %edx
+	cmpl $11, %edx
 	je o11
 	jmp o12
 o0:
 	// 0: conditional move
-	cmp $0, (%ebp, %ecx, 4)
+	cmpl $0, (%ebp, %ecx, 4)
 	je mainloop
 	movl (%ebp, %ebx, 4), %edx
 	movl %edx, (%ebp, %eax, 4)
@@ -142,7 +142,7 @@ o0:
 o1:
 	// 1: array peek
 	movl (%ebp, %ebx, 4), %ebx
-	cmp $0, %ebx
+	cmpl $0, %ebx
 	je peekcode
 	movl (%ebp, %ecx, 4), %ecx
 	incl %ecx
@@ -158,7 +158,7 @@ peekcode:
 o2:
 	// 2: array poke
 	movl (%ebp, %eax, 4), %eax
-	cmp $0, %eax
+	cmpl $0, %eax
 	je pokecode
 	movl (%ebp, %ebx, 4), %ebx
 	incl %ebx
@@ -251,21 +251,24 @@ o11:
 
 o12:
 	// 12: jump
-	cmp $0, (%ebp, %ebx, 4)
+	cmpl $0, (%ebp, %ebx, 4)
 	je modfinger
+a:
 	movl (%ebp, %ebx, 4), %ebx
 	pushl %ecx
 	pushl %ebx
-	movl (%ebx), %edx
-	decl %edx
-	shl $2, %edx
-	pushl %edx
 	pushl %esi
-	call realloc
-	movl %eax, %esi
-	popl %edx
+	call free
+	addl $4, %esp
+	popl %ebx
+	movl (%ebx), %edx
+	shl $2, %edx
+	pushl %ebx
+	pushl %edx
+	call malloc
 	popl %edx
 	popl %ebx
+	movl %eax, %esi
 	addl $4, %ebx
 	pushl %edx
 	pushl %ebx
