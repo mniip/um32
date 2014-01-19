@@ -187,6 +187,12 @@ void emit(void *page, size_t base, platter_t opcode)
 	switch(mnemonic)
 	{
 		case CONDMOVE:
+			if(GET_A == GET_B)
+			{
+				// jmp next
+				E(0xEB); E_NEXT;
+				break;
+			}
 			// cmpl $0, %rCd
 			E(0x41); E(0x83); E(REG_L(0xF8, GET_C)); E(0x00);
 			// je next
@@ -248,12 +254,44 @@ void emit(void *page, size_t base, platter_t opcode)
 			E(0xFF); E(0xD0);
 			break;
 		case ADD:
-			// movl %rBd, %eax
-			E(0x44); E(0x89); E(REG_H(0xC0, GET_B));
-			// addl %rCd, %eax
-			E(0x44); E(0x01); E(REG_H(0xC0, GET_C));
-			// movl %eax, %rAd
-			E(0x41); E(0x89); E(REG_L(0xC0, GET_A));
+			if(GET_A == GET_B && GET_A == GET_C)
+			{
+				// shll $1, %rAd
+				E(0x41); E(0xD1); E(REG_L(0xE0, GET_A));
+				// jmp next
+				E(0xEB); E_NEXT;
+				break;
+			}
+			if(GET_B == GET_A)
+			{
+				// addl %rCd, %rAd
+				E(0x45); E(0x01); E(REG_HL(0xC0, GET_C, GET_A));
+				// jmp next
+				E(0xEB); E_NEXT;
+				break;
+			}
+			if(GET_C == GET_A)
+			{
+				// addl %rBd, %rAd
+				E(0x45); E(0x01); E(REG_HL(0xC0, GET_B, GET_A));
+				// jmp next
+				E(0xEB); E_NEXT;
+				break;
+			}
+			if(GET_B == GET_C)
+			{
+				// movl %rBd, %rAd
+				E(0x45); E(0x89); E(REG_HL(0xC0, GET_B, GET_A));
+				// shll $1, %rAd
+				E(0x41); E(0xD1); E(REG_L(0xE0, GET_A));
+				// jmp next
+				E(0xEB); E_NEXT;
+				break;
+			}
+			// movl %rBd, %rAd
+			E(0x45); E(0x89); E(REG_HL(0xC0, GET_B, GET_A));
+			// addl %rCd, %rAd
+			E(0x45); E(0x01); E(REG_HL(0xC0, GET_C, GET_A));
 			// jmp next
 			E(0xEB); E_NEXT;
 			break;
