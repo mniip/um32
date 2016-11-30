@@ -5,6 +5,9 @@
 #include <string.h>
 #include <stdint.h>
 #include <errno.h>
+#include <malloc.h>
+
+#include <signal.h>
 
 #include <sys/mman.h>
 #include <sys/user.h>
@@ -27,7 +30,6 @@ uint8_t *exec_page = NULL;
 size_t exec_page_act = 0, exec_page_size = 0;
 platter_t *source = NULL;
 size_t *offsets = NULL;
-size_t offsets_size = 0;
 
 static inline void emit(size_t *ptr, uint8_t *data, size_t size, unsigned long long int value)
 {
@@ -40,11 +42,22 @@ static inline void emit(size_t *ptr, uint8_t *data, size_t size, unsigned long l
 	*ptr += size;
 }
 
+static inline void emit_(size_t *ptr, uint8_t *data, uint8_t byte)
+{
+	data[(*ptr)++] = byte;
+}
+
+static inline void emit32(size_t *ptr, uint8_t *data, uint32_t value)
+{
+	*(uint32_t *)&data[*ptr] = value;
+	*ptr += sizeof(uint32_t);
+}
+
 static inline void emit_imm(size_t *ptr, uint8_t *data, size_t size, void *src)
 {
-	uint8_t *source = src;
-	while(size--)
-		data[(*ptr)++] = *(source++);
+       uint8_t *source = src;
+       while(size--)
+           data[(*ptr)++] = *(source++);
 }
 
 extern void aux_poke();
@@ -64,24 +77,22 @@ void emit_insn(size_t *p, uint8_t *d, platter_t insn, struct reloc *relocs, size
 	switch(opcode)
 	{
 	case 0:
-		/*if(A == B)
-			break;*/
 		// test %rCd, %rCd
-		emit(p, d, 3, 0x4585C0 | C << 3 | C);
+		emit_(p, d, 0x45); emit_(p, d, 0x85); emit_(p, d, 0xC0 | C << 3 | C);
 		// cmovnz %rBd, %rAd
-		emit(p, d, 4, 0x450F45C0 | A << 3 | B);
+		emit_(p, d, 0x45); emit_(p, d, 0x0F); emit_(p, d, 0x45); emit_(p, d, 0xC0 | A << 3 | B);
 		break;
 	case 1:
 		// mov %rBd, %eax
-		emit(p, d, 3, 0x4489C0 | B << 3);
+		emit_(p, d, 0x44); emit_(p, d, 0x89); emit_(p, d, 0xC0 | B << 3);
 		// test %eax, %eax
-		emit(p, d, 2, 0x85C0);
+		emit_(p, d, 0x85); emit_(p, d, 0xC0);
 		// jnz . + 7
-		emit(p, d, 2, 0x7505);
+		emit_(p, d, 0x75); emit_(p, d, 0x05);
 		// mov $source, %eax
-		emit(p, d, 1, 0xB8); relocs[(*num_relocs)++] = (struct reloc){*p, source, 1}; emit(p, d, 4, 0);
+		emit_(p, d, 0xB8); relocs[(*num_relocs)++] = (struct reloc){*p, source, 1}; emit32(p, d, 0);
 		// mov (%eax, %rCd, 4), %rAd
-		emit(p, d, 5, 0x67468B0480 | A << 11 | C << 3);
+		emit_(p, d, 0x67); emit_(p, d, 0x46); emit_(p, d, 0x8B); emit_(p, d, 0x04 | A << 3); emit_(p, d, 0x80 | C << 3);
 		break;
 	case 2:
 		// mov %rAd, %eax
@@ -100,7 +111,6 @@ void emit_insn(size_t *p, uint8_t *d, platter_t insn, struct reloc *relocs, size
 		emit(p, d, 2, 0xEB05);
 		// mov %rCd, (%eax, %rBd, 4)
 		emit(p, d, 5, 0x6746890480 | C << 11 | B << 3);
-	//	emit(p, d, 1, 0xCC);
 		break;
 	case 3:
 		if(A == B)
@@ -249,6 +259,7 @@ void emit_insn(size_t *p, uint8_t *d, platter_t insn, struct reloc *relocs, size
 		emit(p, d, 2, 0x41B8 | immR); emit_imm(p, d, 4, &immV);
 		break;
 	default:
+		emit(p, d, 2, 0x0F0D);
 		break;
 	}
 	emit(p, d, 4, 0x0F1F0425); emit_imm(p, d, 4, &insn);
@@ -284,7 +295,6 @@ asm(
 
 	".global aux_poke\n"
 	"aux_poke:\n"
-	"mov (%rsp), %rdx\n"
 	"push %r8\n"
 	"push %r9\n"
 	"push %r10\n"
@@ -294,7 +304,6 @@ asm(
 	"pop %r10\n"
 	"pop %r9\n"
 	"pop %r8\n"
-	"mov %rax, (%rsp)\n"
 	"ret\n"
 
 	".global aux_jump\n"
@@ -336,7 +345,7 @@ asm(
 
 void *exec_allocate(size_t size)
 {
-	void *addr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
+	void *addr = mmap(NULL, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
 	if(addr == (void *)-1)
 	{
 		perror("mmap");
@@ -372,15 +381,6 @@ void *exec_reallocate(void *old, size_t oldsz, size_t newsz)
 	return addr;
 }
 
-void exec_finalize(void *addr, size_t size, int exec)
-{
-	if(mprotect(addr, size, PROT_READ | (exec ? PROT_EXEC : PROT_WRITE)))
-	{
-		perror("mprotect");
-		exit(EXIT_FAILURE);
-	}
-}
-
 void satisfy_reloc(struct reloc *reloc)
 {
 	void *addr = exec_page + reloc->offset;
@@ -406,12 +406,7 @@ void aux_c_dump(long int regs[8], platter_t insn)
 
 void *aux_c_alloc(size_t size)
 {
-	void *addr = mmap(NULL, size * sizeof(platter_t) + sizeof(size_t), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
-	if(addr == (void *)-1)
-	{
-		perror("mmap");
-		exit(EXIT_FAILURE);
-	}
+	void *addr = calloc(size * sizeof(platter_t) + sizeof(size_t), 1);
 	*(size_t *)addr = size;
 	return addr + sizeof(size_t);
 }
@@ -419,88 +414,14 @@ void *aux_c_alloc(size_t size)
 void aux_c_abandon(void *ptr)
 {
 	size_t *addr = (size_t *)ptr - 1;
-	if(munmap(addr, addr[0] * sizeof(platter_t) + sizeof(size_t)))
-	{
-		perror("munmap");
-		exit(EXIT_FAILURE);
-	}
+	free(addr);
 }
 
-void *aux_c_poke(size_t offset, platter_t value, void *ret_addr)
+void aux_c_poke(size_t offset, platter_t value)
 {
-	size_t ret_off = ret_addr - (void *)exec_page;
-	exec_finalize(exec_page, exec_page_act, 0);
-	struct reloc rels[16];
-	size_t num_rels = 0;
-	uint8_t data[64];
-	size_t size = 0;
-
-	emit_insn(&size, data, value, rels, &num_rels);
-	
-	//printf("Had %ld bytes, got %ld\n", offsets[offset + 1] - offsets[offset], size);
-	ssize_t data_diff = size - (offsets[offset + 1] - offsets[offset]);
-
-	if(exec_page_size + data_diff + 64 > exec_page_act)
-	{
-		exec_page = exec_reallocate(exec_page, exec_page_act, exec_page_act + PAGE_SIZE);
-		exec_page_act += PAGE_SIZE;
-	}
-	if(data_diff)
-		memmove(&exec_page[offsets[offset] + size], &exec_page[offsets[offset + 1]], exec_page_size - offsets[offset + 1]);
-	memcpy(&exec_page[offsets[offset]], data, size);
-	exec_page_size += data_diff;
-
-	size_t i;
-	size_t rel_start = num_relocs, rel_end = num_relocs;
-	for(i = 0; i < num_relocs; i++)
-		if(relocs[i].offset >= offsets[offset])
-		{
-			rel_start = i;
-			break;
-		}
-	for(i = rel_start; i < num_relocs; i++)
-		if(relocs[i].offset >= offsets[offset + 1])
-		{
-			rel_end = i;
-			break;
-		}
-
-	//printf("Had %ld relocs, got %ld\n", rel_end - rel_start, num_rels);
-	ssize_t rel_diff = num_rels - (rel_end - rel_start);
-
-	if(num_relocs + rel_diff > act_relocs)
-	{
-		act_relocs += 16;
-		relocs = realloc(relocs, act_relocs * sizeof(struct reloc));
-	}
-	
-	if(rel_diff)
-		memmove(&relocs[rel_start + num_rels], &relocs[rel_end], (num_relocs - rel_end) * sizeof(struct reloc));
-	memcpy(&relocs[rel_start], rels, num_rels * sizeof(struct reloc));
-	num_relocs += rel_diff;
-
-	for(i = 0; i < num_rels; i++)
-		relocs[i].offset += offsets[i];
-	if(data_diff)
-		for(i = rel_start + num_rels; i < num_relocs; i++)
-			relocs[i].offset += data_diff;
-	for(i = data_diff ? 0 : rel_start; i < (data_diff ? num_relocs : rel_start + num_rels); i++)
-		satisfy_reloc(&relocs[i]);
-	for(i = offset + 1; ; i++)
-	{
-		offsets[i] += data_diff;
-		if(offsets[i] == exec_page_size)
-			break;
-	}
-
-	exec_finalize(exec_page, exec_page_act, 1);
-
 	source[offset] = value;
-
-	ret_addr = exec_page + ret_off;
-	if(ret_addr > (void *)(exec_page + offsets[offset]))
-		ret_addr += data_diff;
-	return ret_addr;
+	size_t tmp = 0;
+	emit(&tmp, &exec_page[offsets[offset]], 2, 0xFFD1);
 }
 
 void jit_array(platter_t *array, size_t size)
@@ -511,8 +432,7 @@ void jit_array(platter_t *array, size_t size)
 	source = malloc(size * sizeof(platter_t));
 	memcpy(source, array, size * sizeof(platter_t));
 
-	offsets_size = (size + 1) * sizeof(size_t);
-	offsets = exec_allocate(offsets_size);
+	offsets = malloc((size + 1) * sizeof(size_t));
 
 	size_t i;
 	size_t offset = 0;
@@ -540,7 +460,6 @@ void jit_array(platter_t *array, size_t size)
 	for(i = 0; i < num_relocs; i++)
 		satisfy_reloc(&relocs[i]);
 
-	exec_finalize(exec_page, exec_page_act, 1);
 }
 
 void *aux_c_jump(void *array, size_t offset)
@@ -553,15 +472,21 @@ void *aux_c_jump(void *array, size_t offset)
 	exec_page_act = exec_page_size = 0;
 	free(source);
 	source = NULL;
-	exec_free(offsets, offsets_size);
+	free(offsets);
 	offsets = NULL;
-	offsets_size = 0;
 	jit_array(array, ((size_t *)array)[-1]);
 	return exec_page + offsets[offset];
 }
 
+void sighandler(int sig)
+{
+	exit(0);
+}
+
 int main(int argc, char **argv)
 {
+	signal(SIGQUIT, sighandler);
+
 	if(argc < 2)
 		exit(EXIT_SUCCESS);
 	FILE *f = fopen(argv[1], "rb");
@@ -577,6 +502,8 @@ int main(int argc, char **argv)
 		platter_t x = source[i];
 		source[i] = ((x & 0xFF000000) >> 24) | ((x & 0xFF0000) >> 8) | ((x & 0xFF00) << 8) | ((x & 0xFF) << 24);
 	}
+
+	mallopt(M_MMAP_MAX, 0);
 
 	jit_array(source, size);
 	free(source);
