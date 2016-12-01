@@ -29,6 +29,7 @@ struct reloc *relocs = NULL;
 uint8_t *exec_page = NULL;
 size_t exec_page_act = 0, exec_page_size = 0;
 platter_t *source = NULL;
+size_t source_size = 0;
 void **offsets = NULL;
 
 extern void aux_poke();
@@ -275,6 +276,21 @@ asm(
 	"mov %rax, (%rsp)\n"
 	"ret\n"
 
+	".global aux_rejit\n"
+	"aux_rejit:\n"
+	"mov (%rsp), %rdi\n"
+	"push %r8\n"
+	"push %r9\n"
+	"push %r10\n"
+	"push %r11\n"
+	"call aux_c_rejit\n"
+	"pop %r11\n"
+	"pop %r10\n"
+	"pop %r9\n"
+	"pop %r8\n"
+	"mov %rax, (%rsp)\n"
+	"ret\n"
+
 	".global aux_putchar\n"
 	"aux_putchar:\n"
 	"push %r8\n"
@@ -441,16 +457,13 @@ void aux_c_abandon(void *ptr)
 void aux_c_poke(size_t offset, platter_t value)
 {
 	source[offset] = value;
-	*(uint16_t *)offsets[offset] = 0xD1FF;
+	*(uint16_t *)offsets[offset] = 0xD3FF;
 }
 
 void jit_array(platter_t *array, size_t size)
 {
 	exec_page_act = PAGE_SIZE;
 	exec_page = exec_allocate(exec_page_act);
-
-	source = malloc(size * sizeof(platter_t));
-	memcpy(source, array, size * sizeof(platter_t));
 
 	offsets = malloc((size + 1) * sizeof(void *));
 
@@ -482,7 +495,7 @@ void jit_array(platter_t *array, size_t size)
 
 }
 
-void *aux_c_jump(void *array, size_t offset)
+void *load_array(void *array, size_t size, size_t offset)
 {
 	free(relocs);
 	act_relocs = num_relocs = 0;
@@ -490,10 +503,14 @@ void *aux_c_jump(void *array, size_t offset)
 	exec_free(exec_page, exec_page_act);
 	exec_page = NULL;
 	exec_page_act = exec_page_size = 0;
-	free(source);
-	source = NULL;
 	free(offsets);
 	offsets = NULL;
+	jit_array(array, size);
+	return offsets[offset];
+}
+
+void *aux_c_jump(void *array, size_t offset)
+{
 	size_t size, i;
 	for(i = 0; i < num_stacks; i++)
 		if(array >= stacks[i] && array < stacks[i] + STACK_SZ * STACK_NUM * sizeof(platter_t))
@@ -503,8 +520,27 @@ void *aux_c_jump(void *array, size_t offset)
 		}
 	if(i >= num_stacks)
 		size = ((size_t *)array)[-1];
-	jit_array(array, size);
-	return offsets[offset];
+
+	free(source);
+	source_size = size;
+	source = malloc(size * sizeof(platter_t));
+	memcpy(source, array, size * sizeof(platter_t));
+
+	return load_array(array, size, offset);
+}
+
+void *aux_c_rejit(void *ptr)
+{
+	platter_t left = 0, right = source_size;
+	while(left < right - 1)
+	{
+		platter_t mid = (left + right) / 2;
+		if(offsets[mid] < ptr)
+			left = mid;
+		else
+			right = mid;
+	}
+	return load_array(source, source_size, left);
 }
 
 int main(int argc, char **argv)
@@ -515,22 +551,21 @@ int main(int argc, char **argv)
 		exit(EXIT_SUCCESS);
 	FILE *f = fopen(argv[1], "rb");
 	fseek(f, 0, SEEK_END);
-	size_t size = ftell(f) / sizeof(platter_t);
+	source_size = ftell(f) / sizeof(platter_t);
 	fseek(f, 0, SEEK_SET);
-	platter_t *src = calloc(size, sizeof(platter_t));
+	source = calloc(source_size, sizeof(platter_t));
 	size_t i = 0;
-	while(i < size)
-		i += fread(src + i, sizeof(platter_t), size - i, f);
-	for(i = 0; i < size; i++)
+	while(i < source_size)
+		i += fread(source + i, sizeof(platter_t), source_size - i, f);
+	for(i = 0; i < source_size; i++)
 	{
-		platter_t x = src[i];
-		src[i] = ((x & 0xFF000000) >> 24) | ((x & 0xFF0000) >> 8) | ((x & 0xFF00) << 8) | ((x & 0xFF) << 24);
+		platter_t x = source[i];
+		source[i] = ((x & 0xFF000000) >> 24) | ((x & 0xFF0000) >> 8) | ((x & 0xFF00) << 8) | ((x & 0xFF) << 24);
 	}
 
 	mallopt(M_MMAP_MAX, 0);
 
-	jit_array(src, size);
-	free(src);
+	jit_array(source, source_size);
 
 	asm volatile (
 		"xor %%r8, %%r8\n"
@@ -541,9 +576,10 @@ int main(int argc, char **argv)
 		"xor %%r13, %%r13\n"
 		"xor %%r14, %%r14\n"
 		"xor %%r15, %%r15\n"
+		"mov $aux_rejit, %%rbx\n"
 		"enter_bytecode:\n"
 		"call *%0\n"
-		:: "o"(exec_page) : "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
+		:: "o"(exec_page) : "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "%rbx"
 	);
 
 
