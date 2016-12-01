@@ -398,48 +398,44 @@ size_t num_stacks = 0;
 void *head = NULL;
 
 #define STACK_SZ 8
+#define STACK_NUM 65536
 
 void *aux_c_alloc(size_t size)
 {
-	void *addr;
-	if(size <= STACK_SZ - 2)
+	if(size <= STACK_SZ)
 	{
 		if(!head)
 		{
 			stacks = realloc(stacks, sizeof(void *) * (num_stacks + 1));
-			platter_t (*stack)[STACK_SZ] = calloc(16384, STACK_SZ * sizeof(platter_t));
+			platter_t (*stack)[STACK_SZ] = calloc(STACK_NUM, STACK_SZ * sizeof(platter_t));
 			stacks[num_stacks++] = stack;
 			size_t i;
-			for(i = 0; i < 16383; i++)
+			for(i = 0; i < STACK_NUM - 1; i++)
 				*(void **)&stack[i] = &stack[i + 1];
 			head = &stack[0];
 		}
-		addr = head;
+		void *addr = head;
 		head = *(void **)head;
-		memset(addr + sizeof(size_t), 0, size * sizeof(platter_t));
+		memset(addr, 0, size * sizeof(platter_t));
+		return addr;
 	}
-	else
-	{
-		addr = calloc(size * sizeof(platter_t) + sizeof(size_t), 1);
-	}
-	if(addr > (void*)0xFFFFFFF0)
-		abort();
+	void *addr = calloc(size * sizeof(platter_t) + sizeof(size_t), 1);
 	*(size_t *)addr = size;
 	return addr + sizeof(size_t);
 }
 
 void aux_c_abandon(void *ptr)
 {
+	size_t i;
+	for(i = 0; i < num_stacks; i++)
+		if(ptr >= stacks[i] && ptr < stacks[i] + STACK_SZ * STACK_NUM * sizeof(platter_t))
+		{
+			*(void **)ptr = head;
+			head = ptr;
+			return;
+		}
 	size_t *addr = (size_t *)ptr - 1;
-	if(addr[0] <= STACK_SZ - 2)
-	{
-		*(void **)addr = head;
-		head = addr;
-	}
-	else
-	{
-		free(addr);
-	}
+	free(addr);
 }
 
 void aux_c_poke(size_t offset, platter_t value)
@@ -498,7 +494,16 @@ void *aux_c_jump(void *array, size_t offset)
 	source = NULL;
 	free(offsets);
 	offsets = NULL;
-	jit_array(array, ((size_t *)array)[-1]);
+	size_t size, i;
+	for(i = 0; i < num_stacks; i++)
+		if(array >= stacks[i] && array < stacks[i] + STACK_SZ * STACK_NUM * sizeof(platter_t))
+		{
+			size = STACK_SZ;
+			break;
+		}
+	if(i >= num_stacks)
+		size = ((size_t *)array)[-1];
+	jit_array(array, size);
 	return offsets[offset];
 }
 
@@ -521,7 +526,6 @@ int main(int argc, char **argv)
 	}
 
 	mallopt(M_MMAP_MAX, 0);
-	mallopt(M_PERTURB, 0xAA);
 
 	jit_array(src, size);
 	free(src);
