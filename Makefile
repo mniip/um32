@@ -1,3 +1,5 @@
+umjitv2: Makefile umjitv2.c
+	cc -m64 -O3 -o umjitv2 umjitv2.c
 umjit: Makefile umjit.c
 	cc -m64 -O3 -o umjit umjit.c
 um32: Makefile um32.c

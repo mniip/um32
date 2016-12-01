@@ -509,6 +509,8 @@ void *aux_c_jump(void *array, size_t offset)
 
 int main(int argc, char **argv)
 {
+	setvbuf(stdin, NULL, _IONBF, 0);
+	setvbuf(stdout, NULL, _IONBF, 0);
 	if(argc < 2)
 		exit(EXIT_SUCCESS);
 	FILE *f = fopen(argv[1], "rb");
